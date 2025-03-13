@@ -2,7 +2,8 @@ import { pool } from '../config/database'
 import logger from '../utils/logger';
 
 interface Usuario {
-  username: string,
+  name: string,
+  last_name: string,
   email: string,
   password: string
 }
@@ -11,8 +12,8 @@ interface Usuario {
 export const registrarUsuario = async (usuario: Usuario) => {
   try {
     const result = await pool.query(
-      'INSERT INTO usuarios (username, email, password) VALUES ($1, $2, $3) RETURNING *',
-      [usuario.username, usuario.email, usuario.password]
+      'INSERT INTO usuarios (name, last_name, email, password) VALUES ($1, $2, $3, $4) RETURNING *',
+      [usuario.name, usuario.last_name, usuario.email, usuario.password]
     );
     logger.info(`🟢 Usuario creado correctamente ${JSON.stringify({ id: result.rows[0].id, email: result.rows[0].email })}`);
     return result.rows[0];
@@ -34,15 +35,56 @@ export const buscarUsuarioPorEmail = async (email: string) => {
 };
 
 // Validar Token
-export const validarToken = async () => {
+export const validarToken = async (email: any) => {
   try {
-    const result = await pool.query('UPDATE usuarios SET email_validacion = $1', [true])
+    const result = await pool.query('UPDATE usuarios SET email_validacion = $1 WHERE email = $2', [true, email])
     return result.rows.length ? result.rows[0] : null;
   } catch (error) {
     logger.error(`🔴 MODAL - Error al validar token en bd - ${error}`);
     throw new Error('Error al validar token en bd');
   }
 };
+
+// Guardar Token en la BD
+export const guardarToken = async (token: string, id: number) => {
+  try {
+    const result = await pool.query('INSERT INTO tokens (id_usuarios, token_usuarios) VALUES ($1, $2) RETURNING *', [id, token])
+    return result.rows.length ? result.rows[0] : null;
+  } catch (error) {
+    logger.error(`🔴 MODAL - Error al guardar token en bd - ${error}`);
+    throw new Error(`Error al guardar token en bd - ${error}`);
+  }
+};
+
+export const guardarTokenRestablecer = async (token:string, id: number) => {
+  try {
+    const result = await pool.query('UPDATE tokens SET token_restablecer_usuarios = $1 WHERE id_usuarios = $2', [token, id])
+    return result.rows.length ? result.rows[0] : null;
+  } catch (error) {
+    logger.error(`🔴 MODAL - Error al guardar token en bd - ${error}`);
+    throw new Error(`Error al guardar token en bd - ${error}`);
+  }
+}
+
+export const verificarRefreshTokenEnBD = async (token: string) => {
+  try {
+    const result = await pool.query('SELECT * FROM refresh_tokens WHERE token = $1', [token])
+    return result.rows.length ? result.rows[0] : null;
+  } catch (error) {
+    logger.error(`🔴 MODAL - Error al verificar token en bd - ${error}`);
+    throw new Error(`Error al verificar token en bd - ${error}`);
+  }
+};
+
+export const actualizarPassword = async (email: string, password: string) => {
+  try {
+    const result = await pool.query('UPDATE usuarios SET password = $2 WHERE email = $1', [email, password])
+    return result.rows.length ? result.rows[0] : null;
+  } catch (error) {
+    logger.error(`🔴 MODAL - Error al actualizar password - ${error}`);
+    throw new Error(`Error al actualizar password - ${error}`);
+  }
+}
 
 // Obtener todos los usuarios
 export const getUsers = async () => {
@@ -53,42 +95,6 @@ export const getUsers = async () => {
     logger.error(`🔴 MODAL - Error al obtener usuarios - ${err}`)
   }
 };
-
-export const putUser = async (id: string, userData: { email?: string; username?: string; password?: string }) => {
-  try {
-    const fields = [];
-    const values = [];
-    let index = 1;
-
-    for (const [key, value] of Object.entries(userData)) {
-      if (value !== undefined) {
-        fields.push(`${key} = $${index}`);
-        values.push(value);
-        index++;
-      }
-    }
-
-    if (fields.length === 0) {
-      throw new Error('No se proporcionaron datos para actualizar.');
-    }
-
-    // Agregamos el ID al final de los valores
-    values.push(id);
-
-    const query = `
-      UPDATE usuarios
-      SET ${fields.join(', ')}
-      WHERE id_usuarios = $${index}
-      RETURNING *;
-    `;
-
-    const result = await pool.query(query, values);
-
-    return result.rows.length ? result.rows[0] : null;
-  } catch (err) {
-    logger.error(`🔴 MODAL - Error al obtener usuarios - ${err}`);
-  }
-}
 
 export const deleteUser = async (id: string) => {
   try {
